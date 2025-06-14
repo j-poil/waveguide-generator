@@ -1,15 +1,13 @@
 mod geometry_types;
-mod traits;
 mod models;
 
 use geometry_types::{CartesianPoint, ProfilePoint};
 
+use crate::models::{EllipsoidalOSWG, OblateSpheroidWG};
 use serde::Serialize;
 use std::fs::File;
 use std::io::BufWriter;
 use stl_io::{Normal, Triangle, Vertex};
-use crate::models::OblateSpheroidWG;
-use crate::traits::WaveguideModel;
 
 /// Writes profile points to CSV file (for debugging/visualization)
 fn export_coordinates_to_csv(points: &[ProfilePoint], filename: &str) -> std::io::Result<()> {
@@ -57,14 +55,26 @@ fn export_stl(mesh: &[[CartesianPoint; 3]], filename: &str) -> std::io::Result<(
     for triangle in mesh {
         // Calculate normal using original CartesianPoints for better precision
         let normal = triangle_normal(&triangle[0], &triangle[1], &triangle[2]);
-        
+
         // Create an indexed triangle
         mesh_triangles.push(Triangle {
             normal,
             vertices: [
-                Vertex::new([triangle[0].x as f32, triangle[0].y as f32, triangle[0].z as f32]),
-                Vertex::new([triangle[1].x as f32, triangle[1].y as f32, triangle[1].z as f32]),
-                Vertex::new([triangle[2].x as f32, triangle[2].y as f32, triangle[2].z as f32]),
+                Vertex::new([
+                    triangle[0].x as f32,
+                    triangle[0].y as f32,
+                    triangle[0].z as f32,
+                ]),
+                Vertex::new([
+                    triangle[1].x as f32,
+                    triangle[1].y as f32,
+                    triangle[1].z as f32,
+                ]),
+                Vertex::new([
+                    triangle[2].x as f32,
+                    triangle[2].y as f32,
+                    triangle[2].z as f32,
+                ]),
             ],
         });
     }
@@ -81,8 +91,16 @@ fn main() -> std::io::Result<()> {
     let azimuthal_steps = 36; // 10° resolution
     let axial_steps = 50;
 
-    let ellipsoidal = OblateSpheroidWG::new();
-
+    let ellipsoidal = EllipsoidalOSWG {
+        k: 1.0,
+        r_init: 25.4,
+        alpha_init: 1.0f64.to_radians(),
+        s: 0.7,
+        q: 0.997,
+        n: 6.0,
+        alpha_h: 45.0f64.to_radians(),
+        alpha_v: 30.0f64.to_radians(),
+    };
     // Generate and export a sample profile for inspection
     let test_profile = ellipsoidal.generate_profile(waveguide_length, 0.0, axial_steps);
     export_coordinates_to_csv(&test_profile, "target/exports/waveguide_profile.csv")?;
