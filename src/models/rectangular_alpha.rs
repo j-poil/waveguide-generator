@@ -1,6 +1,6 @@
 use crate::models::OblateSpheroidWG;
 
-pub struct EllipsoidalOSWG {
+pub struct RectangularOSWG {
     pub k: f64,
     pub r_init: f64,
     pub alpha_init: f64,
@@ -11,7 +11,7 @@ pub struct EllipsoidalOSWG {
     pub alpha_v: f64,
 }
 
-impl OblateSpheroidWG for EllipsoidalOSWG {
+impl OblateSpheroidWG for RectangularOSWG {
     fn k(&self) -> f64 { self.k }
     fn r_init(&self) -> f64 { self.r_init }
     fn alpha_init(&self) -> f64 { self.alpha_init }
@@ -22,8 +22,7 @@ impl OblateSpheroidWG for EllipsoidalOSWG {
     fn calculate_tan_alpha(&self, theta: f64, _l:f64) -> f64 {
         let h_axis = self.alpha_h.tan();
         let v_axis = self.alpha_v.tan();
-        let r = (h_axis * v_axis) /
-            ((h_axis * theta.cos()).powi(2) + (v_axis * theta.sin()).powi(2)).sqrt();
-        r // l is simplified in h_axis and in tan(alpha)=r/l
+
+        (h_axis/theta.cos().abs()).min(v_axis/theta.sin().abs()) // simplified l in tan(alpha) and tan(h_axis)
     }
 }

@@ -3,7 +3,7 @@ mod models;
 
 use geometry_types::{CartesianPoint, ProfilePoint};
 
-use crate::models::{EllipsoidalOSWG, OblateSpheroidWG};
+use crate::models::{EllipsoidalOSWG, OblateSpheroidWG, AxisymOSWG, RectangularOSWG, RectangularMorphOSWG};
 use serde::Serialize;
 use std::fs::File;
 use std::io::BufWriter;
@@ -107,7 +107,46 @@ fn main() -> std::io::Result<()> {
 
     // Generate full 3D mesh and export
     let triangles = ellipsoidal.generate_mesh(waveguide_length, azimuthal_steps, axial_steps);
-    export_stl(&triangles, "target/exports/waveguide.stl")?;
+    export_stl(&triangles, "target/exports/ellipsoidal.stl")?;
+
+    let axisym = AxisymOSWG {
+        k: 1.0,
+        r_init: 25.4,
+        alpha_init: 1.0f64.to_radians(),
+        s: 0.7,
+        q: 0.997,
+        n: 6.0,
+        alpha: 45.0f64.to_radians(),
+    };
+    let axi_triangles = axisym.generate_mesh(waveguide_length, azimuthal_steps, axial_steps);
+    export_stl(&axi_triangles, "target/exports/axisymmetric.stl")?;
+
+    let rectangular =  RectangularOSWG {
+        k: 1.0,
+        r_init: 25.4,
+        alpha_init: 1.0f64.to_radians(),
+        s: 0.7,
+        q: 0.997,
+        n: 6.0,
+        alpha_h: 45.0f64.to_radians(),
+        alpha_v: 30.0f64.to_radians(),
+    };
+    let rect_triangles = rectangular.generate_mesh(waveguide_length, azimuthal_steps, axial_steps);
+    export_stl(&rect_triangles, "target/exports/rectangular_alpha.stl")?;
+    
+    let rectangular_morph =  RectangularMorphOSWG {
+        k: 1.0,
+        r_init: 25.4,
+        alpha_init: 1.0f64.to_radians(),
+        s: 0.7,
+        q: 0.997,
+        n: 6.0,
+        alpha_h: 45.0f64.to_radians(),
+        alpha_v: 30.0f64.to_radians(),
+    };
+    let rect_morph_triangles = rectangular_morph.generate_mesh(waveguide_length, azimuthal_steps, axial_steps);
+    export_stl(&rect_morph_triangles, "target/exports/rectangular_morph.stl")?;
+    
 
     println!("Successfully exported waveguide data");
     Ok(())

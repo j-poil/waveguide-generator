@@ -12,10 +12,10 @@ pub trait OblateSpheroidWG: Waveguide {
     fn n(&self) -> f64;
 
     // Common calculations
-    fn generalized_os_distance(&self, z: f64, alpha: f64) -> f64 {
+    fn generalized_os_distance(&self, z: f64, tan_alpha: f64) -> f64 {
         let a = (self.k() * self.r_init()).powi(2);
         let b = 2.0 * self.k() * self.r_init() * z * self.alpha_init().tan();
-        let c = (z * alpha.tan()).powi(2);
+        let c = (z * tan_alpha).powi(2);
         (a + b + c).sqrt() + self.r_init() * (1.0 - self.k())
     }
 
@@ -24,12 +24,26 @@ pub trait OblateSpheroidWG: Waveguide {
             * (1.0 - (1.0 - (z * self.q() / l).powf(self.n())).powf(1.0 / self.n()))
     }
 
+    fn morph_function(&self, _theta: f64, _l: f64) -> Option<f64> {
+        None
+    }
+
     // Angle calculation (to be implemented by variants)
-    fn calculate_alpha(&self, theta: f64) -> f64;
+    fn calculate_tan_alpha(&self, theta: f64, l: f64) -> f64 {
+        if let Some(val) = self.morph_function(theta, l) {
+            ((val - self.termination_distance(l, l) - self.r_init() * (1.0 - self.k())).powi(2)
+                - (self.k() * self.r_init()).powi(2)
+                - 2.0 * self.k() * self.r_init() * l * self.alpha_init().tan())
+            .sqrt()
+                / l
+        } else {
+            panic!("Either alpha or morph function must be defined")
+        }
+    }
 
     fn radial_distance(&self, z: f64, theta: f64, l: f64) -> f64 {
-        let alpha = self.calculate_alpha(theta);
-        self.generalized_os_distance(z, alpha) + self.termination_distance(z, l)
+        let tan_alpha = self.calculate_tan_alpha(theta, l);
+        self.generalized_os_distance(z, tan_alpha) + self.termination_distance(z, l)
     }
 
     /// Generate profile points along one angle
