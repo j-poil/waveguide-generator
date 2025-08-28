@@ -1,7 +1,7 @@
 use crate::geometry_types::{CartesianPoint, ProfilePoint};
 use std::f64::consts::PI;
 
-pub trait OblateSpheroidWG {
+pub trait ConstantLengthOblateSpheroidWG: OblateSpheroidWG {
     // Common parameters
     fn k(&self) -> f64;
     fn r_init(&self) -> f64;
@@ -9,43 +9,21 @@ pub trait OblateSpheroidWG {
     fn s(&self) -> f64;
     fn q(&self) -> f64;
     fn n(&self) -> f64;
+    fn l(&self) -> f64;
+    fn curve_length(&self) -> f64; // can't be a method (or would be calculated rach time)
 
-    // Common calculations
-    fn generalized_os_distance(&self, z: f64, tan_alpha: f64) -> f64 {
-        let a = (self.k() * self.r_init()).powi(2);
-        let b = 2.0 * self.k() * self.r_init() * z * self.alpha_init().tan();
-        let c = (z * tan_alpha).powi(2);
-        (a + b + c).sqrt() + self.r_init() * (1.0 - self.k())
+    fn calculate_profile_curve_length(&self, profile: &Vec<ProfilePoint>) -> f64 {
+        // Calculate the length of the profile curve using the trapezoidal rule
+        profile
+            .windows(2)
+            .map(|pair| {
+                let dx = pair[1].z - pair[0].z;
+                let avg_r = (pair[0].r + pair[1].r) / 2.0;
+                (dx * avg_r).hypot()
+            })
+            .sum()
     }
-
-    fn termination_distance(&self, z: f64, l: f64) -> f64 {
-        self.s() * l / self.q()
-            * (1.0 - (1.0 - (z * self.q() / l).powf(self.n())).powf(1.0 / self.n()))
-    }
-
-    fn morph_function(&self, _theta: f64, _l: f64) -> Option<f64> {
-        None
-    }
-
-    // Angle calculation (to be implemented by variants)
-    fn calculate_tan_alpha(&self, theta: f64, l: f64) -> f64 {
-        if let Some(val) = self.morph_function(theta, l) {
-            ((val - self.termination_distance(l, l) - self.r_init() * (1.0 - self.k())).powi(2)
-                - (self.k() * self.r_init()).powi(2)
-                - 2.0 * self.k() * self.r_init() * l * self.alpha_init().tan())
-            .sqrt()
-                / l
-        } else {
-            panic!("Either alpha or morph function must be defined")
-        }
-    }
-
-    fn radial_distance(&self, z: f64, theta: f64, l: f64) -> f64 {
-        let tan_alpha = self.calculate_tan_alpha(theta, l);
-        self.generalized_os_distance(z, tan_alpha) + self.termination_distance(z, l)
-    }
-
-    /// Generate profile points along one angle
+    /// Generat e profile points along one angle
     fn generate_profile(&self, length: f64, theta: f64, resolution: usize) -> Vec<ProfilePoint> {
         (0..resolution)
             .map(|i| {
@@ -57,6 +35,31 @@ pub trait OblateSpheroidWG {
                 }
             })
             .collect()
+    }
+
+    fn generate_profile_with_fixed_length(
+        &self,
+        theta: f64,
+        resolution: usize,
+    ) -> Vec<ProfilePoint> {
+        let mut max_lenth = self.l() * 2.0;
+        let mut min_lenth = self.l() / 2.0;
+        let mut profile = self.generate_profile(length, theta, resolution);
+
+        // Adjust the profile to ensure it has the correct length
+        let mut current_length = self.calculate_profile_curve_length(&profile);
+        while (current_length - self.curve_length()).abs() > 1e-6 {
+            if current_length < self.curve_length() {
+                min_lenth = current_length
+            } else {
+                max_lenth = current_length;
+            }
+            current_length = (max_lenth - min_lenth) / 2.0 + min_lenth;
+            profile = self.generate_profile(current_length, theta, resolution);
+
+        }
+
+        profile
     }
 
     /// Generate full 3D mesh
@@ -106,5 +109,16 @@ pub trait OblateSpheroidWG {
         }
 
         triangles
+    }
+}
+
+impl<T: OblateSpheroidWG> Waveguide for T {
+    fn generate_mesh(
+        &self,
+        length: f64,
+        azimuth_steps: usize,
+        axial_steps: usize,
+    ) -> Vec<[CartesianPoint; 3]> {
+        OblateSpheroidWG::generate_mesh(self, length, azimuth_steps, axial_steps)
     }
 }

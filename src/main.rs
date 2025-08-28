@@ -3,7 +3,7 @@ mod models;
 
 use geometry_types::{CartesianPoint, ProfilePoint};
 
-use crate::models::{EllipsoidalOSWG, OblateSpheroidWG, AxisymOSWG, RectangularOSWG, RectangularMorphOSWG};
+use crate::models::{EllipsoidalOSWG, OblateSpheroidWG, OblateSpheroidClothoidWG, AxisymOSWG, RectangularOSWG, RectangularMorphOSWG};
 use serde::Serialize;
 use std::fs::File;
 use std::io::BufWriter;
@@ -146,7 +146,32 @@ fn main() -> std::io::Result<()> {
     };
     let rect_morph_triangles = rectangular_morph.generate_mesh(waveguide_length, azimuthal_steps, axial_steps);
     export_stl(&rect_morph_triangles, "target/exports/rectangular_morph.stl")?;
-    
+
+    let axisym_clothoid = models::AxisymOSCWG {
+        k: 1.0,
+        r_init: 25.4,
+        alpha_init: 1.0f64.to_radians(),
+        term_length: 200.0, // mm
+        term_end_radius: 60.0, // mm
+        alpha: 45.0f64.to_radians(),
+    };
+    let test_profile = axisym_clothoid.generate_profile(waveguide_length, 0.0, 4.0);
+    export_coordinates_to_csv(&test_profile, "target/exports/clothoid_waveguide_profile.csv")?;
+    let axi_clothoid_triangles = axisym_clothoid.generate_mesh(waveguide_length, 2*azimuthal_steps, 4.0);
+    export_stl(&axi_clothoid_triangles, "target/exports/axi_clothoid_triangles.stl")?;
+
+    let rect_clothoid = models::RectOSCWG {
+        k: 1.0,
+        r_init: 25.4,
+        alpha_init: 1.0f64.to_radians(),
+        term_length: 180.0, // mm
+        term_end_radius: 50.0, // mm
+        alpha_h: 45.0f64.to_radians(),
+        alpha_v: 30.0f64.to_radians(),
+    };
+
+    let rect_clothoid_triangles = rect_clothoid.generate_mesh(waveguide_length, azimuthal_steps, 4.0);
+    export_stl(&rect_clothoid_triangles, "target/exports/rect_clothoid.stl")?;
 
     println!("Successfully exported waveguide data");
     Ok(())

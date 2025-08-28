@@ -1,14 +1,14 @@
 use crate::geometry_types::{CartesianPoint, ProfilePoint};
 use std::f64::consts::PI;
 
-pub trait OblateSpheroidWG {
+pub trait OblateSpheroidClothoidWG {
     // Common parameters
     fn k(&self) -> f64;
     fn r_init(&self) -> f64;
     fn alpha_init(&self) -> f64;
-    fn s(&self) -> f64;
-    fn q(&self) -> f64;
-    fn n(&self) -> f64;
+
+    fn term_length(&self) -> f64;
+    fn term_end_radius(&self) -> f64;
 
     // Common calculations
     fn generalized_os_distance(&self, z: f64, tan_alpha: f64) -> f64 {
@@ -18,11 +18,6 @@ pub trait OblateSpheroidWG {
         (a + b + c).sqrt() + self.r_init() * (1.0 - self.k())
     }
 
-    fn termination_distance(&self, z: f64, l: f64) -> f64 {
-        self.s() * l / self.q()
-            * (1.0 - (1.0 - (z * self.q() / l).powf(self.n())).powf(1.0 / self.n()))
-    }
-
     fn morph_function(&self, _theta: f64, _l: f64) -> Option<f64> {
         None
     }
@@ -30,7 +25,7 @@ pub trait OblateSpheroidWG {
     // Angle calculation (to be implemented by variants)
     fn calculate_tan_alpha(&self, theta: f64, l: f64) -> f64 {
         if let Some(val) = self.morph_function(theta, l) {
-            ((val - self.termination_distance(l, l) - self.r_init() * (1.0 - self.k())).powi(2)
+            ((val - self.r_init() * (1.0 - self.k())).powi(2)
                 - (self.k() * self.r_init()).powi(2)
                 - 2.0 * self.k() * self.r_init() * l * self.alpha_init().tan())
             .sqrt()
@@ -40,23 +35,47 @@ pub trait OblateSpheroidWG {
         }
     }
 
-    fn radial_distance(&self, z: f64, theta: f64, l: f64) -> f64 {
-        let tan_alpha = self.calculate_tan_alpha(theta, l);
-        self.generalized_os_distance(z, tan_alpha) + self.termination_distance(z, l)
-    }
-
     /// Generate profile points along one angle
-    fn generate_profile(&self, length: f64, theta: f64, resolution: usize) -> Vec<ProfilePoint> {
-        (0..resolution)
+    fn generate_profile(&self, length: f64, theta: f64, step_length: f64) -> Vec<ProfilePoint> {
+        // first, calculate the profile for the generalized OS until L
+        let resolution = (length / step_length) as usize + 1; // +1 to include the last point
+        let mut profile: Vec<ProfilePoint> = (0..resolution)
             .map(|i| {
-                let z = length * (i as f64) / ((resolution - 1) as f64);
+                let tan_alpha = self.calculate_tan_alpha(theta, length);
+                let z = (i as f64) * step_length;
                 ProfilePoint {
                     z,
-                    r: self.radial_distance(z, theta, length),
+                    r: self.generalized_os_distance(z, tan_alpha),
                     theta,
                 }
             })
-            .collect()
+            .collect();
+        // then add the termination with clothoid/euler spiral
+        self.add_termination(&mut profile, step_length);
+
+        profile
+    }
+
+    /// Adds a termination section to the profile using a clothoid (Euler spiral)
+    /// @param profile: The existing profile points to which the termination will be added
+    fn add_termination(&self, profile: &mut Vec<ProfilePoint>, step_length: f64) {
+        let initial_curvature_angle = ((profile[profile.len() - 1].r
+            - profile[profile.len() - 2].r)
+            / (profile[profile.len() - 1].z - profile[profile.len() - 2].z))
+            .atan(); // atan(dy/dx) for the first point
+        for i in 0..(self.term_length() / step_length).round() as i64 {
+            // theta_n = s_n**2 / (2*Rc*sc) + theta_init
+            // => zn+1 = zn + step_length*cos(theta_n)
+            let ultimate_point = profile.last().unwrap();
+            let curvature_angle = initial_curvature_angle
+                + (i as f64 * step_length).powi(2)
+                    / (2.0 * self.term_length() * self.term_end_radius());
+            profile.push(ProfilePoint {
+                z: ultimate_point.z + step_length * (curvature_angle).cos(),
+                r: ultimate_point.r + step_length * (curvature_angle).sin(),
+                theta: ultimate_point.theta,
+            });
+        }
     }
 
     /// Generate full 3D mesh
@@ -64,7 +83,7 @@ pub trait OblateSpheroidWG {
         &self,
         length: f64,
         azimuth_steps: usize,
-        axial_steps: usize,
+        axial_step_length: f64,
     ) -> Vec<[CartesianPoint; 3]> {
         let theta_positions: Vec<f64> = (0..azimuth_steps)
             .map(|i| 2.0 * PI * (i as f64) / (azimuth_steps as f64))
@@ -72,7 +91,7 @@ pub trait OblateSpheroidWG {
 
         let profiles: Vec<Vec<ProfilePoint>> = theta_positions
             .iter()
-            .map(|&theta| self.generate_profile(length, theta, axial_steps))
+            .map(|&theta| self.generate_profile(length, theta, axial_step_length))
             .collect();
 
         let mut triangles = Vec::new();
@@ -83,7 +102,10 @@ pub trait OblateSpheroidWG {
             let current_profile = &profiles[profile_idx];
             let next_profile = &profiles[next_profile_idx];
 
-            for point_idx in 0..(axial_steps - 1) {
+            let nb_axial_steps = current_profile.len();
+            println!("nb_axial_steps : {}", nb_axial_steps);
+
+            for point_idx in 0..(nb_axial_steps - 1) {
                 let p0 = current_profile[point_idx];
                 let p1 = current_profile[point_idx + 1];
                 let p2 = next_profile[point_idx];
